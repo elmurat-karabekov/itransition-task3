@@ -62,7 +62,7 @@ export class Game {
 
         errLog = errLog.replace(
             errType,
-            chalk.underline(errType.toUpperCase())
+            chalk.bold.underline(errType.toUpperCase())
         );
 
         const examples = chalk.yellowBright(

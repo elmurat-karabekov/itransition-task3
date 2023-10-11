@@ -33,13 +33,7 @@ export class Table {
     }
 
     formatTable(table) {
-        this.moves.forEach((move) => {
-            table = table.replaceAll(move, chalk.bold.blue(move));
-        });
-
-        table = table
-            .replace(this.title, chalk.bold.green(this.title))
-            .replace(this.xY, chalk.bgRed(this.xY));
+        table = table.replace(this.title, chalk.bold.green(this.title));
 
         return table;
     }
