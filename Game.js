@@ -1,77 +1,95 @@
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { HMACGenerator } from './HMACGenerator.js';
+import Rules from './Rules.js';
+import { Table } from './Table.js';
 
 export class Game {
     constructor(moves) {
         this.moves = moves;
         this.numOfMoves = moves.length;
+        this.pcMove = null;
+        this.playerMove = null;
+        this.isReady = false;
     }
 
     checkGameParameters() {
-        switch (true) {
-            case !this.hasMinNumMoves(this.moves):
-                this.displayError(
-                    'Please enter THREE OR MORE odd number of moves.'
-                );
-                break;
-            case !this.hasOddNumMoves(this.moves):
-                this.displayError(
-                    'Please enter three or more ODD number of moves.'
-                );
-                break;
-            case !this.hasUniqueMoves(this.moves):
-                this.displayError('All moves must be UNIQUE.');
-                break;
-            default:
-                this.startGame();
-        }
+        this.isReady =
+            this.checkMinNumMoves() &&
+            this.checkIsOdd() &&
+            this.checkIsUnique();
     }
 
-    async startGame() {
-        const pcMove = this.generatePCMove();
-        const hmac = new HMACGenerator(pcMove);
-        await this.displayMenu(hmac.value, this.moves);
+    startGame() {
+        this.pcMove = this.generatePCMove();
+        this.hmac = new HMACGenerator(this.pcMove);
+        this.displayMenu();
     }
 
     generatePCMove() {
         return this.moves[Math.floor(Math.random() * this.numOfMoves)];
     }
 
-    hasMinNumMoves(moves) {
-        return this.numOfMoves >= 3;
+    checkMinNumMoves() {
+        if (this.numOfMoves < 3) {
+            this.displayError('three or more');
+            return false;
+        }
+        return true;
     }
 
-    hasOddNumMoves(moves) {
-        return this.numOfMoves % 2 == 1;
+    checkIsOdd() {
+        if (this.numOfMoves % 2 === 0) {
+            this.displayError('odd');
+            return false;
+        }
+        return true;
     }
 
-    hasUniqueMoves(moves) {
-        const uniqueMoves = new Set(moves);
-        return this.numOfMoves === uniqueMoves.size;
+    checkIsUnique() {
+        const uniqueMoves = new Set(this.moves);
+        if (this.numOfMoves !== uniqueMoves.size) {
+            this.displayError('unique');
+            return false;
+        }
+        return true;
     }
 
-    displayError(message) {
-        console.log('\x1b[41m%s\x1b[0m', `Sorry! ${message}`);
-        console.log(
-            '\x1b[33m%s\x1b[0m',
-            'Examples:\n   I.   Rock Paper Scissors \n   II.  1 2 3 4 5 6 7'
+    displayError(errType) {
+        let errLog = chalk.bgRed(
+            'Sorry! Please enter three or more, odd and unique moves.'
         );
+
+        errLog = errLog.replace(
+            errType,
+            chalk.underline(errType.toUpperCase())
+        );
+
+        const examples = chalk.yellowBright(
+            '\nExamples:\n   I.   Rock Paper Scissors \n   II.  1 2 3 4 5 6 7'
+        );
+
+        console.log(errLog + examples);
     }
 
-    async displayMenu(hmac, moves) {
-        console.log(`HMAC: 
-${hmac}
-Available moves: ${(function () {
-            let availableMoves = '';
-            moves.forEach(function (val, i) {
-                availableMoves += `\n${i + 1} - ${val}`;
-            });
-            return availableMoves;
-        })()}
-0 - exit
-? - help`);
-        await this.askPlayerMove();
+    async displayMenu() {
+        console.log(
+            `HMAC:\n${
+                this.hmac.value
+            }\nAvailable moves: ${this.determineAvailableMoves()}\n0 - exit\n? - help`
+        );
+
+        const userInput = await this.askPlayerMove();
+
+        this.processUserInput(userInput);
+    }
+
+    determineAvailableMoves() {
+        let availableMoves = '';
+        this.moves.forEach(function (val, i) {
+            availableMoves += `\n${i + 1} - ${val}`;
+        });
+        return availableMoves;
     }
 
     async askPlayerMove() {
@@ -81,17 +99,66 @@ Available moves: ${(function () {
             message: 'Enter your move:',
         });
 
-        this.playerMove = answers.player_move;
-        let choices = [...new Array(this.moves.length + 1).keys(), '?'].map(
+        return answers.player_move;
+    }
+
+    async askToContinue() {
+        const answers = await inquirer.prompt({
+            name: 'continue',
+            type: 'list',
+            message: chalk.bold.yellowBright('\n\nContinue playing?'),
+            choices: ['Yes', 'No'],
+        });
+
+        return answers.continue;
+    }
+
+    async processUserInput(userInput) {
+        let choices = [...new Array(this.numOfMoves + 1).keys(), '?'].map(
             String
         );
-        if (!choices.includes(this.playerMove)) {
-            console.clear();
-            await this.displayMenu(this.moves, hmac);
-        } else if (this.playerMove === '0') {
-            process.exit();
-        } else {
-            console.log('You Win!!!');
+
+        switch (true) {
+            case !choices.includes(userInput):
+                console.clear();
+                this.displayMenu();
+                break;
+            case userInput === '0':
+                process.exit();
+                break;
+            case userInput === '?':
+                console.clear();
+                new Table(this.moves).displayHelpTable();
+                const answer = await this.askToContinue();
+                if (answer === 'Yes') {
+                    console.clear();
+                    this.displayMenu();
+                } else {
+                    process.exit();
+                }
+                break;
+            default:
+                this.playerMove = this.moves[parseInt(userInput) - 1];
+                this.displayGameResult();
         }
+    }
+
+    displayGameResult() {
+        const outcome = new Rules(this.moves).determineOutcome(
+            this.pcMove,
+            this.playerMove
+        );
+
+        const mappingOutcomeToMessage = {
+            Win: 'You win!',
+            Draw: "It's a draw :)",
+            Lose: 'You lose :(',
+        };
+
+        console.log(
+            `Your move: ${this.playerMove}\nComputer move: ${this.pcMove}\n${
+                mappingOutcomeToMessage[outcome]
+            }\nHMAC key:\n${this.hmac.getKey()}`
+        );
     }
 }
